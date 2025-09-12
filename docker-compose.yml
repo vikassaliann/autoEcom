@@ -1,0 +1,73 @@
+services:
+  # Service for Redis (Celery Result Backend)
+  redis:
+    image: redis:6-alpine
+    ports:
+      - "6379:6379"
+
+  # Service for PostgreSQL Database
+  db:
+    image: postgres:13-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_DB=price_tracker_db
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+    ports:
+      - "5432:5432"
+
+  # Service for RabbitMQ Message Broker
+  broker:
+    image: rabbitmq:3.9-management-alpine
+    ports:
+      - "5672:5672"   # For Celery
+      - "15672:15672" # For the web management UI
+    environment:
+      - RABBITMQ_DEFAULT_USER=user
+      - RABBITMQ_DEFAULT_PASS=password
+
+  # Service for Django Web Application
+  app:
+    build: .
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - POSTGRES_NAME=price_tracker_db
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_HOST=db
+      - RABBITMQ_HOST=broker
+      - RABBITMQ_USER=user
+      - RABBITMQ_PASSWORD=password
+      - REDIS_HOST=redis
+    depends_on:
+      - db
+      - broker
+      - redis
+
+  # Service for Celery Worker
+  worker:
+    build: .
+    command: celery -A price_tracker worker -l info
+    volumes:
+      - .:/app
+    environment:
+      - POSTGRES_NAME=price_tracker_db
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_HOST=db
+      - RABBITMQ_HOST=broker
+      - RABBITMQ_USER=user
+      - RABBITMQ_PASSWORD=password
+      - REDIS_HOST=redis
+    depends_on:
+      - app
+      - broker
+      - redis
+
+volumes:
+  postgres_data:
